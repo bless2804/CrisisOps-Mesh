@@ -1,0 +1,9 @@
+/* Tailwind v4 uses a single import */
+@import "tailwindcss";
+
+/* Your globals are fine to add here */
+html,
+body,
+#root {
+  height: 100%;
+}
