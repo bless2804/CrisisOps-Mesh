@@ -1,0 +1,26 @@
+ # dev/editor junk
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# TypeScript caches
+**/*.tsbuildinfo
+
+# local builds & deps (Vercel will run its own install/build)
+dist/
+build/
+node_modules/
+
+# large/unneeded folders
+.history/
+coverage/
+tmp/
+*.zip
+*.tar.gz
+*.7z
+
+# not needed for the frontend build
+publisher.py
+subscriber.py
+__pycache__/
