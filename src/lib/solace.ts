@@ -11,7 +11,7 @@ export async function connectSolace(opts: {
     fp.logLevel = solace.LogLevel.WARN;
     solace.SolclientFactory.init(fp);
 
-    const sp = new solace.SessionProperties();
+    const sp = new solace.SessionProperties({});
     sp.url = opts.url;
     sp.vpnName = opts.vpnName;
     sp.userName = opts.userName;

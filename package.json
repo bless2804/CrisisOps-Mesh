@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview --port 4321"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.87.0",

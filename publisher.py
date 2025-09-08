@@ -16,8 +16,8 @@ from solace.messaging.config.solace_properties import (
 # (kept your username override "publisher-client" as in your snippet)
 HOST = os.getenv("SOLACE_HOST", "tcps://mr-connection-bhu01kaceym.messaging.solace.cloud:55443")
 VPN  = os.getenv("SOLACE_VPN",  "crisis-broker")
-USER = os.getenv("SOLACE_USER", "publisher-client")
-PASS = os.getenv("SOLACE_PASS", "giovanny-bless-win")
+USER = os.getenv("SOLACE_USER", "solace-cloud-client")
+PASS = os.getenv("SOLACE_PASS", "gakeduhcr4rmd340ceqnruqtv1")
 
 # Normalize accidental WebSocket URL -> SMF/TLS
 if HOST.startswith("wss://"):
