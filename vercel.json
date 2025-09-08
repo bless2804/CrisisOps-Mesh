@@ -1,5 +1,9 @@
 {
-  "crons": [
-    { "path": "/api/publish", "schedule": "*/2 * * * *" }
+  "version": 2,
+  "functions": {
+    "api/publish.ts": { "runtime": "nodejs18.x" }
+  },
+  "routes": [
+    { "src": "/api/publish", "dest": "api/publish.ts" }
   ]
 }
