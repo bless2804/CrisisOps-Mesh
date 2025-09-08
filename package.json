@@ -20,6 +20,7 @@
     "recharts": "^3.1.2",
     "solclientjs": "^10.18.2",
     "tailwindcss-animate": "^1.0.7",
+    "ws": "^8.18.3",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
