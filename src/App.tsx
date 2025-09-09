@@ -47,6 +47,37 @@ const CORE_TABS: Agency[] = [
   "ngos",
 ];
 
+/** ---------- Client-side fallback generator (only used if enabled) ---------- */
+function randomIncident(): Incident {
+  const severities: Severity[] = ["low", "med", "high", "critical"];
+  const types = ["flood", "accident", "assault", "disease", "earthquake", "fire"] as const;
+  const sev = severities[Math.floor(Math.random() * severities.length)];
+  const typ = types[Math.floor(Math.random() * types.length)];
+  const base = { lat: 45.3215, lng: -75.8572 }; // Ottawa area (slightly offset)
+  const jitter = (n: number) => (Math.random() - 0.5) * n;
+  const lat = base.lat + jitter(0.35);
+  const lng = base.lng + jitter(0.55);
+  const injured = Math.random() < 0.35 ? Math.floor(Math.random() * 3) : 0;
+  const lanes = Math.random() < 0.4 ? Math.floor(Math.random() * 3) : 0;
+
+  return {
+    id: "cli_" + Math.random().toString(16).slice(2, 8),
+    ts: new Date().toISOString(),
+    type: typ,
+    severity: sev,
+    headline: `${typ[0].toUpperCase() + (typ as string).slice(1)} reported`,
+    summary: "Client-side fallback event (demo)",
+    location: { lat, lng, city: "Ottawa", country: "CA" },
+    injuredCount: injured,
+    lanesBlocked: lanes,
+    roadClosed: lanes >= 2,
+    gasLeak: typ === "fire" ? Math.random() < 0.2 : false,
+    powerOutage: typ === "flood" ? Math.random() < 0.3 : false,
+    shelterNeeded: typ === "flood" && sev !== "low" ? Math.random() < 0.4 : false,
+    displacedPeople: typ === "flood" ? Math.floor(Math.random() * 200) : 0,
+  };
+}
+
 /** ---------- Inner App (so we can wrap with ToastProvider) ---------- */
 function AppInner() {
   const { push } = useToast();
@@ -62,25 +93,7 @@ function AppInner() {
   const [recentIds, setRecentIds] = useState<string[]>([]);
 
   const sessionRef = useRef<unknown>(null);
-
-  // ---- Seed incidents once per browser session (optional) ----
-  useEffect(() => {
-    if (import.meta.env.VITE_SEED_ON_LOAD !== "true") return;
-    if (typeof window === "undefined") return;
-
-    // allow manual bypass: ?seed=0
-    const bypass = new URLSearchParams(window.location.search).get("seed");
-    if (bypass === "0") return;
-
-    const KEY = "seeded-incidents";
-    if (sessionStorage.getItem(KEY)) return;
-    sessionStorage.setItem(KEY, "1");
-
-    // Fire-and-forget; the UI will receive them via Solace subscription
-    fetch("/api/publish?count=15", { method: "POST" }).catch(() => {
-      // ignore network errors here; UI still works if Solace is connected
-    });
-  }, []);
+  const lastReceivedRef = useRef<number>(0);
 
   // ---- Connect to Solace (browser client) ----
   const topic = useMemo(
@@ -110,6 +123,7 @@ function AppInner() {
         sessionRef.current = session;
 
         await subscribe(session as any, topic, (inc) => {
+          lastReceivedRef.current = Date.now();
           setEvents((prev) => [inc as Incident, ...prev].slice(0, 500));
 
           const id = (inc as Incident).id;
@@ -139,6 +153,51 @@ function AppInner() {
       }
     };
   }, [topic, url, vpnName, userName, password, push]);
+
+  // ---- Seed: call serverless publisher on first load (GET, no cache) ----
+  useEffect(() => {
+    if (import.meta.env.VITE_SEED_ON_LOAD !== "true") return;
+    if (typeof window === "undefined") return;
+
+    const bypass = new URLSearchParams(window.location.search).get("seed");
+    if (bypass === "0") return;
+
+    const KEY = "seeded-incidents";
+    if (sessionStorage.getItem(KEY)) return;
+    sessionStorage.setItem(KEY, "1");
+
+    // Call serverless publisher (seeds ~15 incidents into Solace)
+    fetch("/api/publish?count=15", {
+      method: "GET",
+      cache: "no-store",
+      headers: { "x-no-cache": "1" },
+    })
+      .then(() => {
+        // optional toast
+        // push("Seeding incidents…");
+      })
+      .catch(() => {
+        // ignore; we have a fallback below
+      });
+  }, []);
+
+  // ---- Fallback: if no events arrive, optionally inject client-side demo data ----
+  useEffect(() => {
+    if (import.meta.env.VITE_DEMO_FALLBACK !== "true") return;
+
+    // After 6 seconds with no events, inject 20 demo incidents so page isn't empty
+    const t = setTimeout(() => {
+      const noEventsArrived =
+        events.length === 0 && lastReceivedRef.current === 0;
+      if (noEventsArrived) {
+        const batch = Array.from({ length: 20 }, () => randomIncident());
+        setEvents(batch);
+        push("No live data yet — showing demo incidents.");
+      }
+    }, 6000);
+
+    return () => clearTimeout(t);
+  }, [events.length, push]);
 
   // ---- Filters & derived lists ----
   const visible = useMemo(() => {
@@ -184,6 +243,8 @@ function AppInner() {
     setSelectedId(undefined);
     setSeverityFilter("all");
     setActiveAgency("all");
+    // allow instant reseed on refresh
+    try { sessionStorage.removeItem("seeded-incidents"); } catch {}
   }
 
   const selected = selectedId
