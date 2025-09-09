@@ -9,7 +9,6 @@ import { ToastProvider, useToast } from "@/components/Toaster";
 
 import type { Incident, Agency, Severity } from "@/types";
 import { routeAgencies } from "@/lib/routing";
-import { connectSolace, subscribe } from "@/lib/solace";
 
 /** ---------- Labels & UI helpers ---------- */
 const AGENCY_LABEL: Record<Agency, string> = {
@@ -47,13 +46,13 @@ const CORE_TABS: Agency[] = [
   "ngos",
 ];
 
-/** ---------- Client-side fallback generator (only used if enabled) ---------- */
+/** ---------- Client-side incident generator ---------- */
 function randomIncident(): Incident {
   const severities: Severity[] = ["low", "med", "high", "critical"];
   const types = ["flood", "accident", "assault", "disease", "earthquake", "fire"] as const;
   const sev = severities[Math.floor(Math.random() * severities.length)];
   const typ = types[Math.floor(Math.random() * types.length)];
-  const base = { lat: 45.3215, lng: -75.8572 }; // Ottawa area (slightly offset)
+  const base = { lat: 45.3215, lng: -75.8572 }; // Ottawa-ish
   const jitter = (n: number) => (Math.random() - 0.5) * n;
   const lat = base.lat + jitter(0.35);
   const lng = base.lng + jitter(0.55);
@@ -66,7 +65,7 @@ function randomIncident(): Incident {
     type: typ,
     severity: sev,
     headline: `${typ[0].toUpperCase() + (typ as string).slice(1)} reported`,
-    summary: "Client-side fallback event (demo)",
+    summary: "Client-side simulated incident",
     location: { lat, lng, city: "Ottawa", country: "CA" },
     injuredCount: injured,
     lanesBlocked: lanes,
@@ -78,128 +77,54 @@ function randomIncident(): Incident {
   };
 }
 
-/** ---------- Inner App (so we can wrap with ToastProvider) ---------- */
+/** ---------- Inner App ---------- */
 function AppInner() {
   const { push } = useToast();
 
+  // State
   const [events, setEvents] = useState<Incident[]>([]);
   const [status, setStatus] =
-    useState<"idle" | "connecting" | "connected" | "error">("idle");
-
+    useState<"idle" | "streaming" | "error">("idle");
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
   const [activeAgency, setActiveAgency] = useState<Agency | "all">("all");
-
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [recentIds, setRecentIds] = useState<string[]>([]);
 
-  const sessionRef = useRef<unknown>(null);
-  const lastReceivedRef = useRef<number>(0);
+  // Controls
+  const maxEvents = 500; // cap to keep the UI responsive
+  const intervalMs = Math.max(400, parseInt(import.meta.env.VITE_SIM_INTERVAL_MS ?? "1200", 10) || 1200);
 
-  // ---- Connect to Solace (browser client) ----
-  const topic = useMemo(
-    () => ((import.meta.env.VITE_SOLACE_TOPIC as string) ?? "crisis/>"),
-    []
-  );
-  const url = import.meta.env.VITE_SOLACE_URL as string | undefined;
-  const vpnName = import.meta.env.VITE_SOLACE_VPN as string | undefined;
-  const userName = import.meta.env.VITE_SOLACE_USER as string | undefined;
-  const password = import.meta.env.VITE_SOLACE_PASS as string | undefined;
+  const intervalRef = useRef<number | null>(null);
 
+  // Start the client-side stream on mount
   useEffect(() => {
-    if (!url || !vpnName || !userName || !password) {
+    try {
+      setStatus("streaming");
+      // optional toast so we use `push` and satisfy TS noUnusedLocals
+      push("Simulating live incidents (no backend)");
+      intervalRef.current = window.setInterval(() => {
+        const inc = randomIncident();
+        setEvents((prev) => [inc, ...prev].slice(0, maxEvents));
+        if (inc.id) {
+          setRecentIds((r) => [inc.id!, ...r].slice(0, 20));
+          window.setTimeout(() => {
+            setRecentIds((r) => r.filter((x) => x !== inc.id));
+          }, 2400);
+        }
+      }, intervalMs);
+    } catch (e) {
+      console.error(e);
       setStatus("error");
-      push("Missing VITE_SOLACE_* env vars");
-      return;
     }
-
-    let mounted = true;
-
-    (async () => {
-      try {
-        setStatus("connecting");
-        const session = await connectSolace({ url, vpnName, userName, password });
-        if (!mounted) return;
-
-        sessionRef.current = session;
-
-        await subscribe(session as any, topic, (inc) => {
-          lastReceivedRef.current = Date.now();
-          setEvents((prev) => [inc as Incident, ...prev].slice(0, 500));
-
-          const id = (inc as Incident).id;
-          if (id) {
-            setRecentIds((r) => [id, ...r].slice(0, 20));
-            setTimeout(
-              () => setRecentIds((r) => r.filter((x) => x !== id)),
-              2400
-            );
-          }
-        });
-
-        setStatus("connected");
-      } catch (err) {
-        console.error(err);
-        setStatus("error");
-        push("Failed to connect to Solace");
-      }
-    })();
-
     return () => {
-      mounted = false;
-      try {
-        (sessionRef.current as { disconnect?: () => void } | null)?.disconnect?.();
-      } catch {
-        /* ignore */
+      if (intervalRef.current !== null) {
+        window.clearInterval(intervalRef.current);
       }
     };
-  }, [topic, url, vpnName, userName, password, push]);
-
-  // ---- Seed: call serverless publisher on first load (GET, no cache) ----
-  useEffect(() => {
-    if (import.meta.env.VITE_SEED_ON_LOAD !== "true") return;
-    if (typeof window === "undefined") return;
-
-    const bypass = new URLSearchParams(window.location.search).get("seed");
-    if (bypass === "0") return;
-
-    const KEY = "seeded-incidents";
-    if (sessionStorage.getItem(KEY)) return;
-    sessionStorage.setItem(KEY, "1");
-
-    // Call serverless publisher (seeds ~15 incidents into Solace)
-    fetch("/api/publish?count=15", {
-      method: "GET",
-      cache: "no-store",
-      headers: { "x-no-cache": "1" },
-    })
-      .then(() => {
-        // optional toast
-        // push("Seeding incidents…");
-      })
-      .catch(() => {
-        // ignore; we have a fallback below
-      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- Fallback: if no events arrive, optionally inject client-side demo data ----
-  useEffect(() => {
-    if (import.meta.env.VITE_DEMO_FALLBACK !== "true") return;
-
-    // After 6 seconds with no events, inject 20 demo incidents so page isn't empty
-    const t = setTimeout(() => {
-      const noEventsArrived =
-        events.length === 0 && lastReceivedRef.current === 0;
-      if (noEventsArrived) {
-        const batch = Array.from({ length: 20 }, () => randomIncident());
-        setEvents(batch);
-        push("No live data yet — showing demo incidents.");
-      }
-    }, 6000);
-
-    return () => clearTimeout(t);
-  }, [events.length, push]);
-
-  // ---- Filters & derived lists ----
+  // Derived
   const visible = useMemo(() => {
     return events.filter((e) => {
       const sevOk =
@@ -236,15 +161,13 @@ function AppInner() {
     return c;
   }, [events]);
 
-  // ---- Reset button ----
+  // Reset (clears all lists and selections, stream keeps running)
   function resetAll() {
     setEvents([]);
     setRecentIds([]);
     setSelectedId(undefined);
     setSeverityFilter("all");
     setActiveAgency("all");
-    // allow instant reseed on refresh
-    try { sessionStorage.removeItem("seeded-incidents"); } catch {}
   }
 
   const selected = selectedId
@@ -262,8 +185,7 @@ function AppInner() {
               className={clsx(
                 "text-xs px-2 py-1 rounded",
                 status === "idle" && "bg-gray-100 text-gray-700",
-                status === "connecting" && "bg-yellow-100 text-yellow-700",
-                status === "connected" && "bg-green-100 text-green-700",
+                status === "streaming" && "bg-green-100 text-green-700",
                 status === "error" && "bg-red-100 text-red-700"
               )}
             >
@@ -417,7 +339,7 @@ function AppInner() {
         </ul>
       </div>
 
-      {/* Drawer (no command buttons wired) */}
+      {/* Drawer */}
       <IncidentDrawer
         open={!!selected}
         incident={selected}
@@ -427,7 +349,7 @@ function AppInner() {
   );
 }
 
-/** ---------- Export wrapped with Toast provider ---------- */
+/** ---------- Export with Toast provider ---------- */
 export default function App() {
   return (
     <ToastProvider>
