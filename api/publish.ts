@@ -1,17 +1,15 @@
 /// <reference types="node" />
 
-// Polyfill WebSocket for Node (Vercel functions run in Node)
+// --- Polyfill WebSocket for Node (Vercel functions run in Node) ---
 import WebSocket from "ws";
 (globalThis as any).WebSocket = WebSocket as any;
 
-import * as solace from "solclientjs";
-
-// ---- One-time Solace factory init (per cold start) ----
-// NOTE: no `new SolclientFactoryProperties()` — just pass a plain object.
-solace.SolclientFactory.init({
-  profile: solace.SolclientFactoryProfiles.version10,
-} as any);
-solace.SolclientFactory.setLogLevel(solace.LogLevel.WARN);
+// Helper to load solclientjs correctly in Node (CJS/UMD)
+async function loadSolace(): Promise<any> {
+  const mod: any = await import("solclientjs");
+  // If it's a CJS/UMD bundle, the usable object is usually on `default`
+  return mod?.default ?? mod;
+}
 
 // ---- Server-side env (NO VITE_ prefix here) ----
 const URL = process.env.SOLACE_URL;
@@ -55,7 +53,7 @@ function randomIncident() {
   };
 }
 
-function connect(): Promise<solace.Session> {
+async function connect(solace: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const session = solace.SolclientFactory.createSession({
       url: URL!,
@@ -67,23 +65,13 @@ function connect(): Promise<solace.Session> {
       generateSendTimestamps: true,
     });
 
-    session.on(solace.SessionEventCode.UP_NOTICE, () => {
-      console.log("[publish] session UP");
-      resolve(session);
-    });
-    session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, (e) => {
-      console.error("[publish] connect failed", (e as any)?.infoStr || e);
-      reject(e);
-    });
+    session.on(solace.SessionEventCode.UP_NOTICE, () => resolve(session));
+    session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, (e: any) => reject(e));
     session.on(solace.SessionEventCode.DISCONNECTED, () => {
-      console.warn("[publish] DISCONNECTED");
+      // optional: log
     });
 
-    try {
-      session.connect();
-    } catch (e) {
-      reject(e);
-    }
+    session.connect();
   });
 }
 
@@ -96,7 +84,17 @@ export default async function handler(req: any, res: any) {
       Math.max(1, parseInt((req?.query?.count as string) || "10", 10) || 10)
     );
 
-    const session = await connect();
+    // Load solclientjs the Node-safe way
+    const solace = await loadSolace();
+
+    // One-time init on cold start
+    const factoryProps = new solace.SolclientFactoryProperties();
+    factoryProps.profile = solace.SolclientFactoryProfiles.version10;
+    factoryProps.logLevel = solace.LogLevel.WARN;
+    solace.SolclientFactory.init(factoryProps);
+
+    const session = await connect(solace);
+
     const createTopic = solace.SolclientFactory.createTopicDestination;
     const createMsg = solace.SolclientFactory.createMessage;
 
@@ -112,12 +110,14 @@ export default async function handler(req: any, res: any) {
       published++;
     }
 
-    try { session.disconnect(); } catch {}
-    try { session.dispose(); } catch {}
+    try {
+      session.disconnect();
+      session.dispose?.();
+    } catch {}
 
     res.status(200).json({ ok: true, published });
   } catch (e: any) {
-    console.error("[publish] error", e);
+    console.error("[/api/publish] error", e);
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 }
