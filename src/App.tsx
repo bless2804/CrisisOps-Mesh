@@ -10,7 +10,7 @@ import { ToastProvider, useToast } from "@/components/Toaster";
 import type { Incident, Agency, Severity } from "@/types";
 import { routeAgencies } from "@/lib/routing";
 
-/** ---------- Labels & UI helpers ---------- */
+/* ---------- Labels & UI helpers ---------- */
 const AGENCY_LABEL: Record<Agency, string> = {
   law: "Police",
   fire: "Fire & Rescue",
@@ -46,16 +46,19 @@ const CORE_TABS: Agency[] = [
   "ngos",
 ];
 
-/** ---------- Client-side incident generator ---------- */
+/* ---------- Client-side incident generator ---------- */
 function randomIncident(): Incident {
   const severities: Severity[] = ["low", "med", "high", "critical"];
   const types = ["flood", "accident", "assault", "disease", "earthquake", "fire"] as const;
+
   const sev = severities[Math.floor(Math.random() * severities.length)];
   const typ = types[Math.floor(Math.random() * types.length)];
+
   const base = { lat: 45.3215, lng: -75.8572 }; // Ottawa-ish
   const jitter = (n: number) => (Math.random() - 0.5) * n;
   const lat = base.lat + jitter(0.35);
   const lng = base.lng + jitter(0.55);
+
   const injured = Math.random() < 0.35 ? Math.floor(Math.random() * 3) : 0;
   const lanes = Math.random() < 0.4 ? Math.floor(Math.random() * 3) : 0;
 
@@ -77,14 +80,13 @@ function randomIncident(): Incident {
   };
 }
 
-/** ---------- Inner App ---------- */
+/* ---------- Inner App ---------- */
 function AppInner() {
   const { push } = useToast();
 
   // State
   const [events, setEvents] = useState<Incident[]>([]);
-  const [status, setStatus] =
-    useState<"idle" | "streaming" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "streaming" | "error">("idle");
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
   const [activeAgency, setActiveAgency] = useState<Agency | "all">("all");
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
@@ -92,7 +94,10 @@ function AppInner() {
 
   // Controls
   const maxEvents = 500; // cap to keep the UI responsive
-  const intervalMs = Math.max(400, parseInt(import.meta.env.VITE_SIM_INTERVAL_MS ?? "1200", 10) || 1200);
+  const intervalMs = Math.max(
+    400,
+    parseInt((import.meta.env.VITE_SIM_INTERVAL_MS as string) ?? "1200", 10) || 1200
+  );
 
   const intervalRef = useRef<number | null>(null);
 
@@ -100,13 +105,12 @@ function AppInner() {
   useEffect(() => {
     try {
       setStatus("streaming");
-      // optional toast so we use `push` and satisfy TS noUnusedLocals
       push("Simulating live incidents (no backend)");
       intervalRef.current = window.setInterval(() => {
         const inc = randomIncident();
         setEvents((prev) => [inc, ...prev].slice(0, maxEvents));
         if (inc.id) {
-          setRecentIds((r) => [inc.id!, ...r].slice(0, 20));
+          setRecentIds((r) => [inc.id, ...r].slice(0, 20));
           window.setTimeout(() => {
             setRecentIds((r) => r.filter((x) => x !== inc.id));
           }, 2400);
@@ -117,9 +121,7 @@ function AppInner() {
       setStatus("error");
     }
     return () => {
-      if (intervalRef.current !== null) {
-        window.clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -140,7 +142,7 @@ function AppInner() {
     const c = { low: 0, med: 0, high: 0, critical: 0 };
     for (const e of events) {
       const s = (e.severity ?? "").toLowerCase() as Severity;
-      if (s in c) (c as any)[s] += 1;
+      if (s in c) (c as Record<Severity, number>)[s] += 1;
     }
     return c;
   }, [events]);
@@ -170,9 +172,7 @@ function AppInner() {
     setActiveAgency("all");
   }
 
-  const selected = selectedId
-    ? events.find((e) => e.id === selectedId)
-    : undefined;
+  const selected = selectedId ? events.find((e) => e.id === selectedId) : undefined;
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -349,7 +349,7 @@ function AppInner() {
   );
 }
 
-/** ---------- Export with Toast provider ---------- */
+/* ---------- Export with Toast provider ---------- */
 export default function App() {
   return (
     <ToastProvider>
