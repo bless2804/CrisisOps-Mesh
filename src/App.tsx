@@ -10,7 +10,7 @@ import { ToastProvider, useToast } from "@/components/Toaster";
 import type { Incident, Agency, Severity } from "@/types";
 import { routeAgencies } from "@/lib/routing";
 
-/* ---------- Labels & UI helpers ---------- */
+/** ---------- Labels & UI helpers ---------- */
 const AGENCY_LABEL: Record<Agency, string> = {
   law: "Police",
   fire: "Fire & Rescue",
@@ -46,19 +46,16 @@ const CORE_TABS: Agency[] = [
   "ngos",
 ];
 
-/* ---------- Client-side incident generator ---------- */
+/** ---------- Client-side incident generator ---------- */
 function randomIncident(): Incident {
   const severities: Severity[] = ["low", "med", "high", "critical"];
   const types = ["flood", "accident", "assault", "disease", "earthquake", "fire"] as const;
-
   const sev = severities[Math.floor(Math.random() * severities.length)];
   const typ = types[Math.floor(Math.random() * types.length)];
-
   const base = { lat: 45.3215, lng: -75.8572 }; // Ottawa-ish
   const jitter = (n: number) => (Math.random() - 0.5) * n;
   const lat = base.lat + jitter(0.35);
   const lng = base.lng + jitter(0.55);
-
   const injured = Math.random() < 0.35 ? Math.floor(Math.random() * 3) : 0;
   const lanes = Math.random() < 0.4 ? Math.floor(Math.random() * 3) : 0;
 
@@ -80,7 +77,7 @@ function randomIncident(): Incident {
   };
 }
 
-/* ---------- Inner App ---------- */
+/** ---------- Inner App ---------- */
 function AppInner() {
   const { push } = useToast();
 
@@ -93,10 +90,10 @@ function AppInner() {
   const [recentIds, setRecentIds] = useState<string[]>([]);
 
   // Controls
-  const maxEvents = 500; // cap to keep the UI responsive
+  const maxEvents = 500; // keep UI responsive
   const intervalMs = Math.max(
     400,
-    parseInt((import.meta.env.VITE_SIM_INTERVAL_MS as string) ?? "1200", 10) || 1200
+    parseInt(import.meta.env.VITE_SIM_INTERVAL_MS ?? "1200", 10) || 1200
   );
 
   const intervalRef = useRef<number | null>(null);
@@ -108,20 +105,24 @@ function AppInner() {
       push("Simulating live incidents (no backend)");
       intervalRef.current = window.setInterval(() => {
         const inc = randomIncident();
-        setEvents((prev) => [inc, ...prev].slice(0, maxEvents));
-        if (inc.id) {
-          setRecentIds((r) => [inc.id, ...r].slice(0, 20));
-          window.setTimeout(() => {
-            setRecentIds((r) => r.filter((x) => x !== inc.id));
-          }, 2400);
-        }
+        const id = inc.id ?? `cli_${Math.random().toString(16).slice(2, 8)}`;
+        const withId: Incident = { ...inc, id };
+
+        setEvents((prev) => [withId, ...prev].slice(0, maxEvents));
+
+        setRecentIds((r) => [id, ...r].slice(0, 20));
+        window.setTimeout(() => {
+          setRecentIds((r) => r.filter((x) => x !== id));
+        }, 2400);
       }, intervalMs);
     } catch (e) {
       console.error(e);
       setStatus("error");
     }
     return () => {
-      if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
+      if (intervalRef.current !== null) {
+        window.clearInterval(intervalRef.current);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -142,7 +143,7 @@ function AppInner() {
     const c = { low: 0, med: 0, high: 0, critical: 0 };
     for (const e of events) {
       const s = (e.severity ?? "").toLowerCase() as Severity;
-      if (s in c) (c as Record<Severity, number>)[s] += 1;
+      if (s in c) (c as any)[s] += 1;
     }
     return c;
   }, [events]);
@@ -163,7 +164,7 @@ function AppInner() {
     return c;
   }, [events]);
 
-  // Reset (clears all lists and selections, stream keeps running)
+  // Reset (clears all lists and selections; stream keeps running)
   function resetAll() {
     setEvents([]);
     setRecentIds([]);
@@ -213,25 +214,21 @@ function AppInner() {
                 key={s}
                 onClick={() => setSeverityFilter(s)}
                 className={clsx(
-                  "px-2.5 py-1.5 rounded text-sm inline-flex items-center gap-1",
+                  "px-3 py-1.5 rounded text-sm inline-flex items-center justify-center gap-1 whitespace-nowrap",
                   SEV_BTN[s],
                   severityFilter === s && "ring-2"
                 )}
               >
                 <span>{s.toUpperCase()}</span>
-                <span className="text-[11px] opacity-70">
-                  (
-                  {s === "all"
-                    ? events.length
-                    : s === "low"
-                    ? sevCounts.low
-                    : s === "med"
-                    ? sevCounts.med
-                    : s === "high"
-                    ? sevCounts.high
-                    : sevCounts.critical}
-                  )
-                </span>
+                <span>({s === "all"
+                  ? events.length
+                  : s === "low"
+                  ? sevCounts.low
+                  : s === "med"
+                  ? sevCounts.med
+                  : s === "high"
+                  ? sevCounts.high
+                  : sevCounts.critical})</span>
               </button>
             ))}
           </div>
@@ -243,13 +240,14 @@ function AppInner() {
             <button
               onClick={() => setActiveAgency("all")}
               className={clsx(
-                "px-3 py-1.5 rounded-full border text-sm",
+                "inline-flex items-center justify-center gap-1 px-4 py-1.5 rounded-full border text-sm whitespace-nowrap min-w-[160px]",
                 activeAgency === "all"
                   ? "bg-slate-900 text-white"
                   : "bg-white hover:bg-gray-50"
               )}
             >
-              All <span className="text-[11px] opacity-70">({events.length})</span>
+              <span>All</span>
+              <span>({events.length})</span>
             </button>
 
             {CORE_TABS.map((a) => (
@@ -257,16 +255,14 @@ function AppInner() {
                 key={a}
                 onClick={() => setActiveAgency(a)}
                 className={clsx(
-                  "px-3 py-1.5 rounded-full border text-sm",
+                  "inline-flex items-center justify-center gap-1 px-4 py-1.5 rounded-full border text-sm whitespace-nowrap min-w-[220px]",
                   activeAgency === a
                     ? "bg-slate-900 text-white"
                     : "bg-white hover:bg-gray-50"
                 )}
               >
-                {AGENCY_LABEL[a]}{" "}
-                <span className="text-[11px] opacity-70">
-                  ({agencyCounts[a]})
-                </span>
+                <span>{AGENCY_LABEL[a]}</span>
+                <span>({agencyCounts[a]})</span>
               </button>
             ))}
           </div>
@@ -349,7 +345,7 @@ function AppInner() {
   );
 }
 
-/* ---------- Export with Toast provider ---------- */
+/** ---------- Export with Toast provider ---------- */
 export default function App() {
   return (
     <ToastProvider>
