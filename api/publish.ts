@@ -1,19 +1,13 @@
 /// <reference types="node" />
-
-// 1) Polyfill WebSocket for Node (Vercel functions run on Node)
 import WebSocket from "ws";
 (globalThis as any).WebSocket = WebSocket as any;
-
-// 2) Solace client
 import * as solace from "solclientjs";
 
-// ---- Solace factory init (NO 'new SolclientFactoryProperties()' here) ----
 solace.SolclientFactory.init({
   profile: solace.SolclientFactoryProfiles.version10,
   logLevel: solace.LogLevel.WARN,
 } as any);
 
-// ---- Server-side env (NO VITE_ prefix here) ----
 const URL = process.env.SOLACE_URL;
 const VPN = process.env.SOLACE_VPN;
 const USER = process.env.SOLACE_USER;
@@ -24,9 +18,7 @@ function assertEnv() {
   const missing = ["SOLACE_URL", "SOLACE_VPN", "SOLACE_USER", "SOLACE_PASS"].filter(
     (k) => !process.env[k as keyof NodeJS.ProcessEnv]
   );
-  if (missing.length) {
-    throw new Error(`Missing env vars: ${missing.join(", ")}`);
-  }
+  if (missing.length) throw new Error(`Missing env vars: ${missing.join(", ")}`);
 }
 
 function randomIncident() {
@@ -69,17 +61,9 @@ function connect(): Promise<solace.Session> {
       generateSendTimestamps: true,
     });
 
-    session.on(solace.SessionEventCode.UP_NOTICE, () => {
-      console.log("[publish] session UP");
-      resolve(session);
-    });
-    session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, (e) => {
-      console.error("[publish] connect failed", (e as any)?.infoStr || e);
-      reject(e);
-    });
-    session.on(solace.SessionEventCode.DISCONNECTED, () => {
-      console.warn("[publish] DISCONNECTED");
-    });
+    session.on(solace.SessionEventCode.UP_NOTICE, () => resolve(session));
+    session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, reject);
+    session.on(solace.SessionEventCode.DISCONNECTED, () => {});
 
     session.connect();
   });
@@ -89,7 +73,6 @@ export default async function handler(req: any, res: any) {
   try {
     assertEnv();
 
-    // Allow ?count= to control how many events (default 10, max 50)
     const count = Math.min(
       50,
       Math.max(1, parseInt((req?.query?.count as string) || "10", 10) || 10)
@@ -116,7 +99,6 @@ export default async function handler(req: any, res: any) {
 
     res.status(200).json({ ok: true, published });
   } catch (e: any) {
-    console.error("[publish] error", e);
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 }
