@@ -1,13 +1,19 @@
 /// <reference types="node" />
+
+// Polyfill WebSocket for Node (Vercel functions run in Node)
 import WebSocket from "ws";
 (globalThis as any).WebSocket = WebSocket as any;
+
 import * as solace from "solclientjs";
 
+// ---- One-time Solace factory init (per cold start) ----
+// NOTE: no `new SolclientFactoryProperties()` — just pass a plain object.
 solace.SolclientFactory.init({
   profile: solace.SolclientFactoryProfiles.version10,
-  logLevel: solace.LogLevel.WARN,
 } as any);
+solace.SolclientFactory.setLogLevel(solace.LogLevel.WARN);
 
+// ---- Server-side env (NO VITE_ prefix here) ----
 const URL = process.env.SOLACE_URL;
 const VPN = process.env.SOLACE_VPN;
 const USER = process.env.SOLACE_USER;
@@ -16,7 +22,7 @@ const REGION = process.env.SOLACE_REGION_PATH || "ottawa";
 
 function assertEnv() {
   const missing = ["SOLACE_URL", "SOLACE_VPN", "SOLACE_USER", "SOLACE_PASS"].filter(
-    (k) => !process.env[k as keyof NodeJS.ProcessEnv]
+    (k) => !process.env[k]
   );
   if (missing.length) throw new Error(`Missing env vars: ${missing.join(", ")}`);
 }
@@ -61,11 +67,23 @@ function connect(): Promise<solace.Session> {
       generateSendTimestamps: true,
     });
 
-    session.on(solace.SessionEventCode.UP_NOTICE, () => resolve(session));
-    session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, reject);
-    session.on(solace.SessionEventCode.DISCONNECTED, () => {});
+    session.on(solace.SessionEventCode.UP_NOTICE, () => {
+      console.log("[publish] session UP");
+      resolve(session);
+    });
+    session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, (e) => {
+      console.error("[publish] connect failed", (e as any)?.infoStr || e);
+      reject(e);
+    });
+    session.on(solace.SessionEventCode.DISCONNECTED, () => {
+      console.warn("[publish] DISCONNECTED");
+    });
 
-    session.connect();
+    try {
+      session.connect();
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
@@ -99,6 +117,7 @@ export default async function handler(req: any, res: any) {
 
     res.status(200).json({ ok: true, published });
   } catch (e: any) {
+    console.error("[publish] error", e);
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 }
