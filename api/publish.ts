@@ -1,19 +1,32 @@
 /// <reference types="node" />
 
-// api/publish.ts
+// 1) Polyfill WebSocket for Node (Vercel functions run on Node)
+import WebSocket from "ws";
+(globalThis as any).WebSocket = WebSocket as any;
 
-// (Optional) pin the runtime – safe to keep or remove if your project already uses Node 20
-export const config = {
-  runtime: "nodejs22.x",
-};
+// 2) Solace client
+import * as solace from "solclientjs";
 
-let SOLACE_INITED = false;
+// ---- Solace factory init (NO 'new SolclientFactoryProperties()' here) ----
+solace.SolclientFactory.init({
+  profile: solace.SolclientFactoryProfiles.version10,
+  logLevel: solace.LogLevel.WARN,
+} as any);
 
-// --- helpers ---
-function mustEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var ${name}`);
-  return v;
+// ---- Server-side env (NO VITE_ prefix here) ----
+const URL = process.env.SOLACE_URL;
+const VPN = process.env.SOLACE_VPN;
+const USER = process.env.SOLACE_USER;
+const PASS = process.env.SOLACE_PASS;
+const REGION = process.env.SOLACE_REGION_PATH || "ottawa";
+
+function assertEnv() {
+  const missing = ["SOLACE_URL", "SOLACE_VPN", "SOLACE_USER", "SOLACE_PASS"].filter(
+    (k) => !process.env[k as keyof NodeJS.ProcessEnv]
+  );
+  if (missing.length) {
+    throw new Error(`Missing env vars: ${missing.join(", ")}`);
+  }
 }
 
 function randomIncident() {
@@ -44,75 +57,45 @@ function randomIncident() {
   };
 }
 
-export default async function handler(req: any, res: any) {
-  try {
-    // quick env presence check (doesn't leak secrets)
-    const HAVE = {
-      SOLACE_URL: !!process.env.SOLACE_URL,
-      SOLACE_VPN: !!process.env.SOLACE_VPN,
-      SOLACE_USER: !!process.env.SOLACE_USER,
-      SOLACE_PASS: !!process.env.SOLACE_PASS,
-    };
-    console.log("[/api/publish] env present:", HAVE);
-
-    const URL = mustEnv("SOLACE_URL");
-    const VPN = mustEnv("SOLACE_VPN");
-    const USER = mustEnv("SOLACE_USER");
-    const PASS = mustEnv("SOLACE_PASS");
-    const REGION = process.env.SOLACE_REGION_PATH || "ottawa";
-
-    // dynamic imports (avoid cold-start import errors)
-    const { default: WebSocket } = await import("ws");
-    (globalThis as any).WebSocket = WebSocket as any;
-
-    const raw = await import("solclientjs");
-    const solace: any = (raw as any).default ?? raw;
-
-    // one-time factory init per cold start
-    if (!SOLACE_INITED) {
-      const props = new solace.SolclientFactoryProperties();
-      props.profile = solace.SolclientFactoryProfiles.version10;
-      props.logLevel = solace.LogLevel.INFO;
-      solace.SolclientFactory.init(props);
-      SOLACE_INITED = true;
-      console.log("[/api/publish] Solace factory initialized");
-    }
-
-    // connect
-    console.log("[/api/publish] connecting…");
-    const session: any = solace.SolclientFactory.createSession({
-      url: URL,
-      vpnName: VPN,
-      userName: USER,
-      password: PASS,
+function connect(): Promise<solace.Session> {
+  return new Promise((resolve, reject) => {
+    const session = solace.SolclientFactory.createSession({
+      url: URL!,
+      vpnName: VPN!,
+      userName: USER!,
+      password: PASS!,
       connectRetries: 3,
-      reconnectRetries: 3,
+      reconnectRetries: 5,
       generateSendTimestamps: true,
     });
 
-    const up = new Promise<void>((resolve, reject) => {
-      session.on(solace.SessionEventCode.UP_NOTICE, () => {
-        console.log("[/api/publish] session UP");
-        resolve();
-      });
-      session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, (e: any) => {
-        console.error("[/api/publish] connect failed:", e?.infoStr || e);
-        reject(new Error(e?.infoStr || "CONNECT_FAILED_ERROR"));
-      });
-      session.on(solace.SessionEventCode.DISCONNECTED, () => {
-        console.warn("[/api/publish] DISCONNECTED");
-      });
+    session.on(solace.SessionEventCode.UP_NOTICE, () => {
+      console.log("[publish] session UP");
+      resolve(session);
+    });
+    session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, (e) => {
+      console.error("[publish] connect failed", (e as any)?.infoStr || e);
+      reject(e);
+    });
+    session.on(solace.SessionEventCode.DISCONNECTED, () => {
+      console.warn("[publish] DISCONNECTED");
     });
 
     session.connect();
-    await up;
+  });
+}
 
-    // how many to send
+export default async function handler(req: any, res: any) {
+  try {
+    assertEnv();
+
+    // Allow ?count= to control how many events (default 10, max 50)
     const count = Math.min(
       50,
       Math.max(1, parseInt((req?.query?.count as string) || "10", 10) || 10)
     );
 
+    const session = await connect();
     const createTopic = solace.SolclientFactory.createTopicDestination;
     const createMsg = solace.SolclientFactory.createMessage;
 
@@ -127,15 +110,13 @@ export default async function handler(req: any, res: any) {
       session.send(msg);
       published++;
     }
-    console.log("[/api/publish] published:", published);
 
     try { session.disconnect(); } catch {}
     try { session.dispose(); } catch {}
 
-    res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json({ ok: true, published });
-  } catch (err: any) {
-    console.error("[/api/publish] ERROR:", err);
-    return res.status(500).json({ ok: false, error: String(err?.message || err) });
+    res.status(200).json({ ok: true, published });
+  } catch (e: any) {
+    console.error("[publish] error", e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 }
