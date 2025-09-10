@@ -9,7 +9,7 @@ A real-time incident orchestration demo that uses **Solace Agent Mesh** and ligh
 ## ✨ What it does
 
 * Ingests events (mocked) and assigns severity.
-* Routes each incident via **topic-based messaging** to the right agency (law, fire, EMS, hospitals, utilities, transport, NGOs).
+* Routes each incident via **topic-based messaging** to the right agency (Police, fire fighters, EMS, hospitals, transport, NGOs, etc).
 * Live **web console**: severity donut, activity chart, map, agency queues, and a clickable incident feed.
 
 ---
