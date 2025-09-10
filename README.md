@@ -80,3 +80,6 @@ $env:SOLACE_PASS="<password>"
 export SOLACE_HOST="tcps://<your-host>:55443"
 export SOLACE_VPN="<your-vpn
 ```
+
+## Demo Video
+https://github.com/user-attachments/assets/e0d8b045-ef62-4d5f-acaf-c60bda7d4385
