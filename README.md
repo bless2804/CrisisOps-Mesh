@@ -1,6 +1,6 @@
 # Real-Time Incident Routing Console
 
-## 🎥 Demo
+## Demo
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/e0d8b045-ef62-4d5f-acaf-c60bda7d4385" width="760" controls>
@@ -25,7 +25,7 @@ At full scale, this will ingest **real alerts** from **sensors, calls, news, and
 
 ---
 
-## ✨ Highlights
+## Highlights
 
 * Topic-based routing: `crisis/events/...` → (router rules) → `crisis/agency/...`
 * Real-time UI: severity donut, 10-minute activity trend, Leaflet map, per-agency queues, details drawer
@@ -34,7 +34,7 @@ At full scale, this will ingest **real alerts** from **sensors, calls, news, and
 
 ---
 
-## 🧩 Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -75,7 +75,7 @@ flowchart LR
 
 ---
 
-## 🗂 Repo Structure
+## Repo Structure
 
 ```
 .
@@ -101,7 +101,7 @@ flowchart LR
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ### Python (publisher/subscriber)
 
@@ -130,7 +130,7 @@ VITE_TOPIC_ROOT=crisis/
 
 ---
 
-## ▶️ Run Locally
+## Run Locally
 
 ### 1) Solace
 
@@ -162,7 +162,7 @@ Open the printed local URL—analytics, map, queues, and detail drawer update in
 
 ---
 
-## 🧠 How It Works
+## How It Works
 
 1. **publisher.py** emits random incidents to `crisis/events/...` with payloads like:
 
@@ -190,7 +190,7 @@ Open the printed local URL—analytics, map, queues, and detail drawer update in
 
 ---
 
-## 🔒 Notes
+## Notes
 
 * **SMF vs WSS**: Python uses **SMF (tcps)**; browser uses **WSS**. Use the correct endpoint per client.
 * Ensure the Solace user has publish/subscribe on both topic hierarchies.
@@ -198,7 +198,7 @@ Open the printed local URL—analytics, map, queues, and detail drawer update in
 
 ---
 
-## 🛣 Roadmap
+## Roadmap
 
 * Hook in **real sources** (sensors, 911 CAD, social, news)
 * **Actions** in the drawer (acknowledge/assign/escalate)
@@ -208,7 +208,7 @@ Open the printed local URL—analytics, map, queues, and detail drawer update in
 
 ---
 
-## 🙌 Credits
+## Credits
 
 Built at **AI Tinkerers Hackathon** by **Daryll Giovanny Bikak Mbal** & **Blessy Rampogu**.
 Powered by **Solace PubSub+ / Agent Mesh**, **React + Vite + TypeScript**, **Leaflet**, and **Tailwind**.
