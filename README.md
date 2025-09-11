@@ -9,7 +9,7 @@
 
 ## Overview
 
-It’s a real-time incident prototype for **cities and large campuses**: It ingests **mock emergency alerts** and **route** them to the right agency (**Police, Firefighters, EMS, Hospitals, Transport, NGOs, …**) in **milliseconds**.
+This project is a real-time incident prototype for **cities and large campuses**: It ingests **mock emergency alerts** and **route** them to the right agency (**Police, Firefighters, EMS, Hospitals, Transport, NGOs, …**) in **milliseconds**.
 
 The web console shows a **live map** with incident locations, **severity analytics**, and **per-agency interactive queues**, with a details drawer for fast triage—so responders **see what matters and act immediately**. It’s built on **Solace Agent Mesh** for **reliable, low-latency** routing.
 
